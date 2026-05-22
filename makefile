@@ -22,7 +22,7 @@ pdfs = $(shell ls books | grep -v header.tex | xargs -i echo pdfs/{} | sed s/.te
 all: $(pdfs) index.html
 logs: high-problems.log wide-problems.log duplicates.log problem-count.log page-count.log
 
-%.gnos: %.json extract.py
+%.gnos: %.json
 - ./extract.py "$<"
 
 pdfs/%.pdf: books/%.tex books/header.tex $$(shell find problems/$$(*F)/ -name "*.json" | sed -e "s/.json/.gnos/")
