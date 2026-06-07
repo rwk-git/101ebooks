@@ -140,7 +140,7 @@ def to_goban_coordinate(move: str) -> str:
     row = 19 - ord(move[1]) + ord('a')
     return f"{col}{row}"
 
-def main(path: str) -> None:
+def process_one(path: str) -> None:
   assert(path.endswith(".json"))
   with open(path) as file:
     input_json = json.load(file)
@@ -174,5 +174,10 @@ def main(path: str) -> None:
   with open(f"{stem}.solution", "w") as file:
     file.write(solution_moves + "\n")
 
+
+def main(paths: list[str]) -> None:
+  for path in paths:
+    process_one(path)
+
 if __name__ == "__main__":
-  main(sys.argv[1])
+  main(sys.argv[1:])

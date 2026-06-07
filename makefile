@@ -39,6 +39,9 @@ problem-count.log: $(pdfs)
 page-count.log: $(pdfs) index.html
 - lynx -dump -listonly $(shell pwd)/index.html | grep file | cut -d/ -f8-9 | xargs -i bash -c 'printf "{}:\t" && pdfinfo "{}" | grep Pages | awk "{print \$$2}"' | expand -t 10,40 | tee $@
 
+extract-all: FORCE
+- find problems -name "*.json" -print0 | xargs -0 -r -P8 -n 512 ./extract.py
+
 clean: FORCE
 - rm -rf -- .latex.out/* pdfs/*.pdf
 
