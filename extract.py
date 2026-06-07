@@ -174,7 +174,10 @@ def process_one(path: str) -> None:
   ]
   # last key component is a tie breaker
   theproblem = min(permutations, key=lambda x: (x.height, x.width, sorted(x.initial_blacks)))
-  solution_moves = " ".join(map(to_goban_coordinate, theproblem.moves[:14]))
+  if input_json["status"] == 1:
+    solution_moves = "eliminated"
+  else:
+    solution_moves = " ".join(map(to_goban_coordinate, theproblem.moves[:14]))
 
   stem = path.removesuffix(".json")
   with open(f"{stem}.sgf", "w") as file:
