@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-
+#
 import base64
 import sys
 import json
 import re
-from typing import Callable
+from typing import Callable, Any
 from dataclasses import dataclass, field, replace as evolve
 
 @dataclass
@@ -145,7 +145,17 @@ def process_one(path: str) -> None:
   with open(path) as file:
     input_json = json.load(file)
 
-  best_answer = max(input_json["answers"], key=lambda x: (x["ty"] == 1, x["st"] == 2, x["ok_count"]), default={"pts": []})
+  def best_answer_key(x: dict[str, Any]) -> tuple:
+      return (
+          x["ty"] == 1,
+          x["st"] == 2,
+          x["ok_count"],
+          -x["error_count"],
+          -x["bad_count"],
+          str(x),
+      )
+
+  best_answer = max(input_json["answers"], key=best_answer_key, default={"pts": []})
   best_answer_moves = [x["p"] for x in best_answer["pts"]]
 
   theproblem = SGF.from_base64(input_json["c"], input_json["blackfirst"])
@@ -162,7 +172,7 @@ def process_one(path: str) -> None:
     (p := p.rotate()),
     (p := p.rotate()),
   ]
-  # the 3rd key component is a tie breaker
+  # last key component is a tie breaker
   theproblem = min(permutations, key=lambda x: (x.height, x.width, sorted(x.initial_blacks)))
   solution_moves = " ".join(map(to_goban_coordinate, theproblem.moves[:14]))
 
