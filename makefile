@@ -5,8 +5,7 @@ SHELL = /bin/bash
 .RECIPEPREFIX=-
 .SECONDEXPANSION:
 .PHONY: FORCE
-.PRECIOUS: %.gnos
-.PRECIOUS: %.solution.gnos
+.SECONDARY:
 
 # overview of what makes what:
 # ./download.sh:  101weiqi.com -> problems/*.json
@@ -52,7 +51,7 @@ index.html: index.py problem-count.log
 - ./index.py
 
 problem-count.log: $(pdfs)
-- expr $$(find pdfs -name "*.pdf" | xargs -n1 -P8 pdfgrep -Poh "Problems: \K[0-9]+" | xargs -I {} -P8 bash -c "printf '{} + '")0 | tee $@
+- pdfgrep -Poh --page-range=1 "Problems: \K[0-9]+" $^ | paste -sd+ | bc > "$@"
 
 page-count.log: $(pdfs) index.html
 - lynx -dump -listonly $(shell pwd)/index.html | grep file | cut -d/ -f8-9 | xargs -I {} bash -c 'printf "{}:\t" && pdfinfo "{}" | grep Pages | awk "{print \$$2}"' | expand -t 10,40 | tee $@
