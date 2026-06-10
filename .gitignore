@@ -3,5 +3,5 @@
 *.out
 .DS_Store
 __pycache__
-epub/universal/
+epub/**
 xtch/
