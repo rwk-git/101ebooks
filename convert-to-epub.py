@@ -273,7 +273,7 @@ def make_title_image(title, jp_title, level, num_problems, source=''):
 
     return img.resize((WIDTH, HEIGHT), Image.LANCZOS)
 
-def make_problem_image(blacks, whites, c0, c1, r0, r1, problem_num):
+def make_problem_image(blacks, whites, c0, c1, r0, r1, problem_num, **kwargs):
     S = RENDER_SCALE
     margin_top = int(MARGIN_TOP * UI_SCALE)
     avail_w = (WIDTH  - 2 * PADDING) * S
@@ -300,13 +300,16 @@ def make_problem_image(blacks, whites, c0, c1, r0, r1, problem_num):
             draw.ellipse([cx-stone_r, cy-stone_r, cx+stone_r, cy+stone_r],
                          fill=255, outline=0, width=max(1, THIN+1))
 
-    draw.text((WIDTH * S // 2, int(80 * S * UI_SCALE)), f"Problem {problem_num}", fill=0,
-              font=_bold_font(int(36 * S * UI_SCALE)), anchor='mt')
+    draw.text((WIDTH * S // 2, int(80 * S * UI_SCALE)),
+              f"P {problem_num} {kwargs.get("chapter_id", "-")}/{kwargs.get("problem_id", "")}" if kwargs.get("debug", False) else f"Problem {problem_num}",
+              fill=0, font=_bold_font(int(36 * S * UI_SCALE)), anchor='mt')
     return img.resize((WIDTH, HEIGHT), Image.LANCZOS)
 
-def make_solution_pages(blacks, whites, solution_moves, c0, c1, r0, r1, problem_num):
+def make_solution_pages(blacks, whites, solution_moves, c0, c1, r0, r1, problem_num, **kwargs):
     """Return a single-element list with a full-page solution diagram."""
     if not solution_moves:
+        if kwargs.get("debug", False):
+            print(f"Warning: Problem {problem_num}, {kwargs.get("chapter_id", "?")}/{kwargs.get("problem_id", "?")}.solution is missing a solution")
         return []
 
     S = RENDER_SCALE
@@ -341,8 +344,9 @@ def make_solution_pages(blacks, whites, solution_moves, c0, c1, r0, r1, problem_
     img  = Image.new('L', (WIDTH * S, HEIGHT * S), 255)
     draw = ImageDraw.Draw(img)
 
-    draw.text((WIDTH * S // 2, int(80 * S * UI_SCALE)), f"Solution {problem_num}", fill=0,
-              font=_bold_font(int(36 * S * UI_SCALE)), anchor='mt')
+    draw.text((WIDTH * S // 2, int(80 * S * UI_SCALE)),
+              f"S {problem_num} {kwargs.get("chapter_id", "-")}/{kwargs.get("problem_id", "")}" if kwargs.get("debug", False) else f"Solution {problem_num}",
+              fill=0, font=_bold_font(int(36 * S * UI_SCALE)), anchor='mt')
     draw_grid(draw, c0, c1, r0, r1, gx0, gy0, cell_px)
     draw_board(draw, board, c0, c1, r0, r1, gx0, gy0, cell_px, history)
 
@@ -569,7 +573,7 @@ def parse_tex(tex_path):
 
 # --- main ---
 
-def convert_book(tex_path, book_slug):
+def convert_book(tex_path, book_slug, debug):
     title, jp_title, level, source, problem_refs = parse_tex(tex_path)
     print(f"  {title}: {len(problem_refs)} problems")
 
@@ -614,10 +618,12 @@ def convert_book(tex_path, book_slug):
         spine_items.append(p_sid)
         labels[p_sid] = f"Problem {prob_num}"
         pages[p_sid] = page_xhtml(p_sid)
-        images[p_sid] = make_problem_image(blacks, whites, c0, c1, r0, r1, prob_num)
+        images[p_sid] = make_problem_image(blacks, whites, c0, c1, r0, r1, prob_num,
+                                           chapter_id=chapter_id, problem_id=problem_id, debug=debug)
 
         # Solution page
-        sol_imgs = make_solution_pages(blacks, whites, solution_moves, c0, c1, r0, r1, prob_num)
+        sol_imgs = make_solution_pages(blacks, whites, solution_moves, c0, c1, r0, r1, prob_num,
+                                       chapter_id=chapter_id, problem_id=problem_id, debug=debug)
         total_sol = len(sol_imgs)
         for si, sol_img in enumerate(sol_imgs):
             s_sid = f"s{prob_num:04d}" if total_sol == 1 else f"s{prob_num:04d}p{si}"
@@ -664,6 +670,7 @@ def main():
     parser.add_argument('--device', choices=['x4', 'x3', 'universal', 'both', 'all'],
                         default='both',
                         help='target device (both=x3+x4, all=x3+x4+universal)')
+    parser.add_argument('--debug', action='store_true', help='generate books with extra debug information')
     args = parser.parse_args()
 
     tex_files = sorted(BOOKS_DIR.glob('*.tex'))
@@ -683,7 +690,7 @@ def main():
         _set_device(device)
         print(f"Converting {len(tex_files)} books for {device} ({WIDTH}x{HEIGHT})...")
         for tex_path in tex_files:
-            convert_book(tex_path, tex_path.stem)
+            convert_book(tex_path, tex_path.stem, args.debug)
 
 if __name__ == '__main__':
     main()
