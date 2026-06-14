@@ -52,6 +52,8 @@ _LATEX_MACRON = {'a':'ā','e':'ē','i':'ī','o':'ō','u':'ū',
 
 HOSHI = {(3,3),(9,3),(15,3),(3,9),(9,9),(15,9),(3,15),(9,15),(15,15)}
 
+global args
+
 def decode_latex(s):
     s = re.sub(r'\\=([aeiouAEIOU])', lambda m: _LATEX_MACRON[m.group(1)], s)
     return s.replace('~', ' ').replace('\\&', '&')
@@ -68,17 +70,45 @@ def parse_sgf(text):
     whites = [sgf_coord(m) for aw_group in aw for m in re.findall(r'\[([a-z]{2})\]', aw_group)]
     return blacks, whites, [sgf_coord(m) for m in moves]
 
-def compute_viewport(blacks, whites, solution_moves):
+def compute_viewport(blacks, whites, solution_moves, extra_lines = 1):
     """Compute the board region to display, consistent for problem+solution pages."""
     all_coords = blacks + whites + solution_moves
     if not all_coords:
         return 0, 8, 0, 8
     cols = [c for c, r in all_coords]
     rows = [r for c, r in all_coords]
-    c0 = max(0,  min(cols) - 1)
-    c1 = min(18, max(cols) + 1)
-    r0 = max(0,  min(rows) - 1)
-    r1 = min(18, max(rows) + 1)
+    c0 = max(0,  min(cols) - extra_lines)
+    c1 = min(18, max(cols) + extra_lines)
+    r0 = max(0,  min(rows) - extra_lines)
+    r1 = min(18, max(rows) + extra_lines)
+    return c0, c1, r0, r1
+
+def compute_viewport_to_edge(blacks, whites, solution_moves, extra_lines = 1):
+    """Like compute_viewport, but extends to the nearest board edge on each axis."""
+    all_coords = blacks + whites + solution_moves
+    if not all_coords:
+        return 0, 8, 0, 8
+    cols = [c for c, r in all_coords]
+    rows = [r for c, r in all_coords]
+    # +2 -2 gives an extra line and some more breathing space, although smaller display size
+    if min(cols) <= 18 - max(cols):
+        c0, c1 = 0, min(18, max(cols) + extra_lines)
+    else:
+        c0, c1 = max(0, min(cols) - extra_lines), 18
+    if min(rows) <= 18 - max(rows):
+        r0, r1 = 0, min(18, max(rows) + extra_lines)
+    else:
+        r0, r1 = max(0, min(rows) - extra_lines), 18
+    # Add a minimum amount of lines from each edge
+    MIN_EDGE_LINES = 6
+    if c0 == 0:
+        c1 = max(c1, MIN_EDGE_LINES - 1)
+    else:
+        c0 = min(c0, 18 - (MIN_EDGE_LINES - 1))
+    if r0 == 0:
+        r1 = max(r1, MIN_EDGE_LINES - 1)
+    else:
+        r0 = min(r0, 18 - (MIN_EDGE_LINES - 1))
     return c0, c1, r0, r1
 
 def cell_size(c0, c1, r0, r1, avail_w, avail_h):
@@ -573,7 +603,7 @@ def parse_tex(tex_path):
 
 # --- main ---
 
-def convert_book(tex_path, book_slug, debug):
+def convert_book(tex_path, book_slug, args):
     title, jp_title, level, source, problem_refs = parse_tex(tex_path)
     print(f"  {title}: {len(problem_refs)} problems")
 
@@ -611,7 +641,7 @@ def convert_book(tex_path, book_slug, debug):
                     solution_moves.append((COLS_MAP.index(token[0]), 19 - int(token[1:])))
 
         # Shared viewport for problem + solution
-        c0, c1, r0, r1 = compute_viewport(blacks, whites, solution_moves)
+        c0, c1, r0, r1 = compute_viewport_to_edge(blacks, whites, solution_moves) if args.to_edge else compute_viewport(blacks, whites, solution_moves)
 
         # Problem page
         p_sid = f"p{prob_num:04d}"
@@ -619,11 +649,11 @@ def convert_book(tex_path, book_slug, debug):
         labels[p_sid] = f"Problem {prob_num}"
         pages[p_sid] = page_xhtml(p_sid)
         images[p_sid] = make_problem_image(blacks, whites, c0, c1, r0, r1, prob_num,
-                                           chapter_id=chapter_id, problem_id=problem_id, debug=debug)
+                                        chapter_id=chapter_id, problem_id=problem_id, debug=args.debug)
 
         # Solution page
         sol_imgs = make_solution_pages(blacks, whites, solution_moves, c0, c1, r0, r1, prob_num,
-                                       chapter_id=chapter_id, problem_id=problem_id, debug=debug)
+                                    chapter_id=chapter_id, problem_id=problem_id, debug=args.debug)
         total_sol = len(sol_imgs)
         for si, sol_img in enumerate(sol_imgs):
             s_sid = f"s{prob_num:04d}" if total_sol == 1 else f"s{prob_num:04d}p{si}"
@@ -670,7 +700,11 @@ def main():
     parser.add_argument('--device', choices=['x4', 'x3', 'universal', 'both', 'all'],
                         default='both',
                         help='target device (both=x3+x4, all=x3+x4+universal)')
+    parser.add_argument('--extra-lines', type=int, default=1, help='number of extra lines next to stones, default=1')
+    parser.add_argument('--to-edge', action='store_true', help='view port goes to the edge of the board')
     parser.add_argument('--debug', action='store_true', help='generate books with extra debug information')
+
+    global args
     args = parser.parse_args()
 
     tex_files = sorted(BOOKS_DIR.glob('*.tex'))
@@ -690,7 +724,7 @@ def main():
         _set_device(device)
         print(f"Converting {len(tex_files)} books for {device} ({WIDTH}x{HEIGHT})...")
         for tex_path in tex_files:
-            convert_book(tex_path, tex_path.stem, args.debug)
+            convert_book(tex_path, tex_path.stem, args)
 
 if __name__ == '__main__':
     main()
