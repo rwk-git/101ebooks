@@ -622,7 +622,8 @@ def convert_book(tex_path, book_slug, args):
     pages['title'] = page_xhtml('title')
     images['title'] = make_title_image(title, jp_title, level, len(problem_refs), source)
 
-    for prob_num, (chapter_id, problem_id) in enumerate(problem_refs, 1):
+    prob_num = 1
+    for original_prob_num, (chapter_id, problem_id) in enumerate(problem_refs, 1):
         sgf_path = PROBLEMS_DIR / book_slug / chapter_id / f"{problem_id}.sgf"
         sol_path = PROBLEMS_DIR / book_slug / chapter_id / f"{problem_id}.solution"
 
@@ -636,6 +637,9 @@ def convert_book(tex_path, book_slug, args):
         COLS_MAP = list('ABCDEFGHJKLMNOPQRST')
         solution_moves = []
         if sol_path.exists():
+            if "eliminated" in sol_path.read_text():
+                print(f'problem num {original_prob_num}, {chapter_id}/{problem_id}.solution was eliminated, problems continue from {prob_num}')
+                continue
             for token in sol_path.read_text().strip().split():
                 if len(token) >= 2 and token[0] in COLS_MAP:
                     solution_moves.append((COLS_MAP.index(token[0]), 19 - int(token[1:])))
@@ -664,6 +668,8 @@ def convert_book(tex_path, book_slug, args):
                 labels[s_sid] = f"Solution {prob_num} ({si+1}/{total_sol})"
             pages[s_sid] = page_xhtml(s_sid)
             images[s_sid] = sol_img
+
+        prob_num += 1
 
     if len(spine_items) <= 1:  # only title page, no problems
         print(f"    SKIP: no problems found")
