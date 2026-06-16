@@ -598,7 +598,7 @@ def parse_tex(tex_path):
     jp_title = extract('jptitle')
     level    = extract('level')
     source   = extract('source')
-    problems = re.findall(r'\\p\{(\d+)\}\{(\d+)\}', text)
+    problems = re.findall(r'\\p\{(\d+)\}\{(.*)\}', text)
     return title, jp_title, level, source, problems
 
 # --- main ---
