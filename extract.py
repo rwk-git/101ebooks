@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import base64
+import os
+import subprocess
 import sys
 import json
 import re
@@ -133,13 +135,30 @@ class SGF:
     moves_list = re.findall(moves_pattern, input)
     return SGF(initial_whites=aw_list, initial_blacks=ab_list, moves=moves_list)
 
+  @staticmethod
+  def to_base64(sgf: "SGF", black_first: bool) -> str:
+    if black_first:
+      payload = repr([sgf.initial_blacks, sgf.initial_whites])
+    else:
+      payload = repr([sgf.initial_whites, sgf.initial_blacks])
+    key = "101222"
+    enc = [chr(ord(c) ^ ord(key[i % len(key)])) for i, c in enumerate(payload)]
+    return base64.b64encode("".join(enc).encode("utf-8")).decode("utf-8")
+
 def to_goban_coordinate(move: str) -> str:
     cols = list("ABCDEFGHJKLMNOPQRST")
     col = cols[ord(move[0]) - ord('a')]
     row = 19 - ord(move[1]) + ord('a')
     return f"{col}{row}"
 
-def process_one(path: str) -> None:
+def from_goban_coordinate(move: str) -> str:
+    cols = list("ABCDEFGHJKLMNOPQRST")
+    col = chr(ord('a') + cols.index(move[0]))
+    row = chr(ord('a') + 19 - int(move[1:]))
+    return f"{col}{row}"
+
+def _compute_outputs(path: str) -> tuple[str, str, str]:
+  """Return (sgf, gnos, solution) strings that process_one would write for path."""
   assert(path.endswith(".json"))
   with open(path) as file:
     input_json = json.load(file)
@@ -178,18 +197,245 @@ def process_one(path: str) -> None:
   else:
     solution_moves = " ".join(map(to_goban_coordinate, theproblem.moves[:14]))
 
+  return (
+    theproblem.to_sgf() + "\n",
+    theproblem.to_gnos() + "\n",
+    solution_moves + "\n",
+  )
+
+
+def process_one(path: str) -> None:
+  sgf, gnos, solution = _compute_outputs(path)
   stem = path.removesuffix(".json")
   with open(f"{stem}.sgf", "w") as file:
-    file.write(theproblem.to_sgf() + "\n")
+    file.write(sgf)
   with open(f"{stem}.gnos", "w") as file:
-    file.write(theproblem.to_gnos() + "\n")
+    file.write(gnos)
   with open(f"{stem}.solution", "w") as file:
-    file.write(solution_moves + "\n")
+    file.write(solution)
 
 
-def main(paths: list[str]) -> None:
-  for path in paths:
-    process_one(path)
+def update_json_from_sgf(json_path: str, sgf_path: str) -> bool:
+  """Update board position and solution in json_path from sgf_path.
+
+  The SGF must have been produced by process_one (i.e. already in canonical
+  orientation). Returns True if the file was written.  Idempotent: a second
+  call with the same SGF leaves the JSON unchanged.
+  """
+  with open(json_path) as f:
+    data = json.load(f)
+  with open(sgf_path) as f:
+    new_sgf = SGF.from_sgf(f.read())
+
+  # new_sgf is canonical. Undo the sflip process_one applies so that
+  # re-processing the JSON regenerates the same canonical board.
+  board_for_c = new_sgf.sflip() if data["xv"] % 3 != 0 else new_sgf
+  new_c = SGF.to_base64(board_for_c, data["blackfirst"])
+
+  new_status = 2 if new_sgf.moves else 1
+  new_pts = [{"p": m, "c": ""} for m in new_sgf.moves]
+  new_answer = {
+    "id": 0, "st": 2, "ty": 1, "nu": 0,
+    "username": "", "userid": 0,
+    "pts": new_pts, "v": 0,
+    "ok_count": 1, "change_count": 0, "bad_count": 0, "error_count": 0,
+    "created": 0,
+  }
+  new_answers = [new_answer]
+
+  if (data.get("c") == new_c
+      and data.get("answers") == new_answers
+      and data.get("status") == new_status):
+    return False
+
+  data["c"] = new_c
+  data["answers"] = new_answers
+  data["status"] = new_status
+  with open(json_path, "w") as f:
+    json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+    f.write("\n")
+  return True
+
+
+def update_sgf_from_solution(sgf_path: str, solution_path: str) -> bool:
+  """Replace moves in sgf_path with those from solution_path. Returns True if changed."""
+  with open(sgf_path) as f:
+    sgf = SGF.from_sgf(f.read())
+  with open(solution_path) as f:
+    solution = f.read().strip()
+
+  new_moves = [] if solution == "eliminated" else [from_goban_coordinate(m) for m in solution.split()]
+
+  if sgf.moves == new_moves:
+    return False
+
+  with open(sgf_path, "w") as f:
+    f.write(evolve(sgf, moves=new_moves).to_sgf() + "\n")
+  return True
+
+
+def update_from_git(commit: str | None = None) -> None:
+  """Update .json files whose .sgf counterpart changed in git.
+
+  Without a commit, uses all SGFs that differ from HEAD (staged or unstaged).
+  With a commit hash/ref, uses SGFs changed by that specific commit.
+  """
+  if commit:
+    cmd = ["git", "diff", "--name-only", f"{commit}^!"]
+  else:
+    cmd = ["git", "diff", "--name-only", "HEAD"]
+  result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+  sgf_paths = [p for p in result.stdout.splitlines() if p.endswith(".sgf")]
+  if not sgf_paths:
+    print("No changed .sgf files found.")
+    return
+  for sgf_path in sgf_paths:
+    json_path = sgf_path.removesuffix(".sgf") + ".json"
+    if not os.path.exists(json_path):
+      print(f"skip {sgf_path}: no matching .json", file=sys.stderr)
+      continue
+    changed = update_json_from_sgf(json_path, sgf_path)
+    print(f"{'updated' if changed else 'unchanged'}: {json_path}")
+
+
+def check_coherence(json_path: str) -> bool:
+  """Warn if .sgf/.gnos/.solution don't match what the .json would generate.
+
+  Returns True if all three files are present and coherent.
+  """
+  expected_sgf, expected_gnos, expected_solution = _compute_outputs(json_path)
+  stem = json_path.removesuffix(".json")
+  ok = True
+  for ext, expected in [
+    (".sgf", expected_sgf),
+    (".gnos", expected_gnos),
+    (".solution", expected_solution),
+  ]:
+    path = stem + ext
+    if not os.path.exists(path):
+      print(f"MISSING  {path}")
+      ok = False
+      continue
+    with open(path) as f:
+      actual = f.read()
+    if actual != expected:
+      print(f"MISMATCH {path}")
+      ok = False
+  return ok
+
+
+def check_from_git(commit: str | None = None) -> bool:
+  """Check coherence for all problems touched by changed files in git.
+
+  Discovers stems from any changed .json/.sgf/.gnos/.solution file and runs
+  check_coherence on each. Returns True if all are coherent.
+  """
+  if commit:
+    cmd = ["git", "diff", "--name-only", f"{commit}^!"]
+  else:
+    cmd = ["git", "diff", "--name-only", "HEAD"]
+  result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+  stems = set()
+  for p in result.stdout.splitlines():
+    for ext in (".json", ".sgf", ".gnos", ".solution"):
+      if p.endswith(ext):
+        stems.add(p.removesuffix(ext))
+        break
+  if not stems:
+    print("No changed problem files found.")
+    return True
+  all_ok = True
+  for stem in sorted(stems):
+    json_path = stem + ".json"
+    if not os.path.exists(json_path):
+      print(f"skip {stem}: no .json", file=sys.stderr)
+      continue
+    if not check_coherence(json_path):
+      all_ok = False
+  return all_ok
+
+
+def reconcile_one(json_path: str) -> bool:
+  """Run the full reconciliation pipeline and verify consistency.
+
+  Steps: .solution -> .sgf (moves), .sgf -> .json, .json -> all files.
+  Warns if .sgf or .solution differ after regeneration. Returns True if consistent.
+  """
+  stem = json_path.removesuffix(".json")
+  sgf_path = stem + ".sgf"
+  solution_path = stem + ".solution"
+
+  update_sgf_from_solution(sgf_path, solution_path)
+
+  with open(sgf_path) as f: sgf_before = f.read()
+  with open(solution_path) as f: solution_before = f.read()
+
+  update_json_from_sgf(json_path, sgf_path)
+  process_one(json_path)
+
+  ok = True
+  with open(sgf_path) as f:
+    if f.read() != sgf_before:
+      print(f"WARNING: {sgf_path} changed after regeneration")
+      ok = False
+  with open(solution_path) as f:
+    if f.read() != solution_before:
+      print(f"WARNING: {solution_path} changed after regeneration")
+      ok = False
+  return ok
+
+
+def reconcile_from_git(commit: str | None = None) -> bool:
+  """Reconcile all problems touched by changed files in git. Returns True if all consistent."""
+  if commit:
+    cmd = ["git", "diff", "--name-only", f"{commit}^!"]
+  else:
+    cmd = ["git", "diff", "--name-only", "HEAD"]
+  result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+  stems = set()
+  for p in result.stdout.splitlines():
+    for ext in (".json", ".sgf", ".gnos", ".solution"):
+      if p.endswith(ext):
+        stems.add(p.removesuffix(ext))
+        break
+  if not stems:
+    print("No changed problem files found.")
+    return True
+  all_ok = True
+  for stem in sorted(stems):
+    json_path = stem + ".json"
+    if not os.path.exists(json_path):
+      print(f"skip {stem}: no .json", file=sys.stderr)
+      continue
+    if not reconcile_one(json_path):
+      all_ok = False
+  return all_ok
+
+
+def main(args: list[str]) -> None:
+  if args and args[0] == "--update-from-git":
+    update_from_git(args[1] if len(args) > 1 else None)
+  elif args and args[0] == "--check":
+    ok = True
+    for path in args[1:]:
+      if not check_coherence(path):
+        ok = False
+    sys.exit(0 if ok else 1)
+  elif args and args[0] == "--check-from-git":
+    ok = check_from_git(args[1] if len(args) > 1 else None)
+    sys.exit(0 if ok else 1)
+  elif args and args[0] == "--reconcile":
+    ok = True
+    for path in args[1:]:
+      if not reconcile_one(path):
+        ok = False
+    sys.exit(0 if ok else 1)
+  elif args and args[0] == "--reconcile-from-git":
+    ok = reconcile_from_git(args[1] if len(args) > 1 else None)
+    sys.exit(0 if ok else 1)
+  else:
+    for path in args:
+      process_one(path)
 
 if __name__ == "__main__":
   main(sys.argv[1:])
