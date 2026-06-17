@@ -195,7 +195,7 @@ def _compute_outputs(path: str) -> tuple[str, str, str]:
   if input_json["status"] == 1:
     solution_moves = "eliminated"
   else:
-    solution_moves = " ".join(map(to_goban_coordinate, theproblem.moves[:14]))
+    solution_moves = " ".join(map(to_goban_coordinate, theproblem.moves))
 
   return (
     theproblem.to_sgf() + "\n",
