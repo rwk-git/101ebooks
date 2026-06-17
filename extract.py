@@ -136,14 +136,25 @@ class SGF:
     return SGF(initial_whites=aw_list, initial_blacks=ab_list, moves=moves_list)
 
   @staticmethod
-  def to_base64(sgf: "SGF", black_first: bool) -> str:
+  def to_base64(sgf: "SGF", black_first: bool, key: str = "101222") -> str:
     if black_first:
       payload = repr([sgf.initial_blacks, sgf.initial_whites])
     else:
       payload = repr([sgf.initial_whites, sgf.initial_blacks])
-    key = "101222"
     enc = [chr(ord(c) ^ ord(key[i % len(key)])) for i, c in enumerate(payload)]
     return base64.b64encode("".join(enc).encode("utf-8")).decode("utf-8")
+
+def _detect_key(b64: str) -> str:
+  """Return the XOR key used to encode b64, falling back to '101222'."""
+  raw = base64.b64decode(b64).decode("utf-8")
+  for key in ["101222", "101333"]:
+    dec = "".join(chr(ord(raw[i]) ^ ord(key[i % len(key)])) for i in range(len(raw)))
+    try:
+      eval(dec)
+      return key
+    except Exception:
+      continue
+  return "101222"
 
 def to_goban_coordinate(move: str) -> str:
     cols = list("ABCDEFGHJKLMNOPQRST")
@@ -227,30 +238,36 @@ def update_json_from_sgf(json_path: str, sgf_path: str) -> bool:
   with open(sgf_path) as f:
     new_sgf = SGF.from_sgf(f.read())
 
-  # new_sgf is canonical. Undo the sflip process_one applies so that
-  # re-processing the JSON regenerates the same canonical board.
-  board_for_c = new_sgf.sflip() if data["xv"] % 3 != 0 else new_sgf
-  new_c = SGF.to_base64(board_for_c, data["blackfirst"])
-
   new_status = 2 if new_sgf.moves else 1
-  new_pts = [{"p": m, "c": ""} for m in new_sgf.moves]
-  new_answer = {
-    "id": 0, "st": 2, "ty": 1, "nu": 0,
-    "username": "", "userid": 0,
-    "pts": new_pts, "v": 0,
-    "ok_count": 1, "change_count": 0, "bad_count": 0, "error_count": 0,
-    "created": 0,
-  }
-  new_answers = [new_answer]
 
-  if (data.get("c") == new_c
-      and data.get("answers") == new_answers
-      and data.get("status") == new_status):
+  # If the JSON already produces the correct canonical SGF, "c" and answers are
+  # already semantically correct (possibly in a different orientation/format).
+  try:
+    expected_sgf, _, _ = _compute_outputs(json_path)
+    board_and_moves_unchanged = (expected_sgf == new_sgf.to_sgf() + "\n")
+  except Exception:
+    board_and_moves_unchanged = False
+
+  needs_write = False
+  if not board_and_moves_unchanged:
+    board_for_c = new_sgf.sflip() if data["xv"] % 3 != 0 else new_sgf
+    key = _detect_key(data["c"]) if data.get("c") else "101222"
+    data["c"] = SGF.to_base64(board_for_c, data["blackfirst"], key)
+    new_pts = [{"p": m, "c": ""} for m in new_sgf.moves]
+    data["answers"] = [{
+      "id": 0, "st": 2, "ty": 1, "nu": 0,
+      "username": "", "userid": 0,
+      "pts": new_pts, "v": 0,
+      "ok_count": 1, "change_count": 0, "bad_count": 0, "error_count": 0,
+      "created": 0,
+    }]
+    needs_write = True
+  if data.get("status") != new_status:
+    data["status"] = new_status
+    needs_write = True
+
+  if not needs_write:
     return False
-
-  data["c"] = new_c
-  data["answers"] = new_answers
-  data["status"] = new_status
   with open(json_path, "w") as f:
     json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
     f.write("\n")
