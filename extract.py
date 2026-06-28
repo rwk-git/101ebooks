@@ -377,15 +377,17 @@ def reconcile_one(json_path: str) -> bool:
   """Run the full reconciliation pipeline and verify consistency.
 
   Steps: .solution -> .sgf (moves), .sgf -> .json, .json -> all files.
-  Warns if .sgf or .solution differ after regeneration. Returns True if consistent.
+  Warns if .sgf, .gnos, or .solution differ after regeneration. Returns True if consistent.
   """
   stem = json_path.removesuffix(".json")
   sgf_path = stem + ".sgf"
+  gnos_path = stem + ".gnos"
   solution_path = stem + ".solution"
 
   update_sgf_from_solution(sgf_path, solution_path)
 
   with open(sgf_path) as f: sgf_before = f.read()
+  with open(gnos_path) as f: gnos_before = f.read()
   with open(solution_path) as f: solution_before = f.read()
 
   update_json_from_sgf(json_path, sgf_path)
@@ -395,6 +397,10 @@ def reconcile_one(json_path: str) -> bool:
   with open(sgf_path) as f:
     if f.read() != sgf_before:
       print(f"WARNING: {sgf_path} changed after regeneration")
+      ok = False
+  with open(gnos_path) as f:
+    if f.read() != gnos_before:
+      print(f"WARNING: {gnos_path} changed after regeneration")
       ok = False
   with open(solution_path) as f:
     if f.read() != solution_before:
