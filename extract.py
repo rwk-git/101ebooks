@@ -93,6 +93,7 @@ class SGF:
 
     char91 = lambda c: "\\char91" if c == "[" else c
     result = "{\\gnos%\n"
+    height_cutoff = 19 if self.height > height_cutoff else height_cutoff
     goban = goban[-height_cutoff:]
     for row in goban:
       row_str = "".join(map(char91, row))
