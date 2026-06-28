@@ -29,7 +29,7 @@ SHELL = /bin/bash
 
 pdfs = $(shell ls books | grep -v header.tex | xargs -I {} echo pdfs/{} | sed s/.tex/.pdf/g)
 all: $(pdfs) index.html
-logs: high-problems.log wide-problems.log duplicates.log problem-count.log page-count.log
+logs: high-problems.log wide-problems.log duplicates.log duplicates_in_book.log problem-count.log page-count.log
 
 %.gnos: %.json
 - ./extract.py "$<"
@@ -60,6 +60,9 @@ watch: FORCE
 # grep $book duplicates.log | cut -d/ -f4 | cut -d. -f1 | xargs -IX sed -i 's/^[^%].*{X}/%&%duplicate/g' books/$book.tex
 duplicates.log: FORCE
 - find problems -name "*.gnos" -exec md5sum {} + | sort | awk 'BEGIN{p=""} $$1==p{if(!d){print l}; print; d=1} $$1!=p{p=$$1; l=$$0; d=0}' > $@
+
+duplicates_in_book.log: duplicates.log
+- ./utils/duplicates_in_book.py $< > $@
 
 high-problems.log: FORCE
 - find problems -name "*.sgf" -exec grep "[abcdefghi]\]" -l {} + \
