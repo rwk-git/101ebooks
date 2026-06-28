@@ -5,12 +5,17 @@ Reads duplicates.log and produces duplicates_in_book.log:
   - augments each entry with the line in the .tex book where it appears
   - sorts by book name, then hash
   - separates groups with a blank line
+
+With --section: additionally filters to groups where all duplicates
+  appear in the same .tex file (same part/section of the book).
 """
 
 import sys
 import glob
+import argparse
 import subprocess
 from collections import defaultdict
+from itertools import groupby
 
 
 def parse_groups(path):
@@ -45,10 +50,21 @@ def find_tex_ref(book, problem_id, problem_num):
     return 'NA'
 
 
-def main():
-    input_file = sys.argv[1] if len(sys.argv) > 1 else 'duplicates.log'
+def tex_file_of(tex_ref):
+    """Extract 'books/file.tex' from 'books/file.tex:linenum:match', or None if NA."""
+    if tex_ref == 'NA':
+        return None
+    return tex_ref.split(':')[0]
 
-    groups = parse_groups(input_file)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('input', nargs='?', default='duplicates.log')
+    parser.add_argument('--section', action='store_true',
+                        help='keep only groups appearing in the same .tex file')
+    args = parser.parse_args()
+
+    groups = parse_groups(args.input)
 
     # Keep only groups where all entries belong to the same book
     same_book = {
@@ -64,14 +80,24 @@ def main():
             _, _, problem_id, filename = gnos_path.split('/')
             problem_num = filename.removesuffix('.gnos')
             tex_ref = find_tex_ref(book, problem_id, problem_num)
-            rows.append((book, hash_val, f'{hash_val}\t{gnos_path}\t{tex_ref}'))
+            rows.append((book, hash_val, tex_ref, f'{hash_val}\t{gnos_path}\t{tex_ref}'))
 
     # Sort by book name, then hash
     rows.sort(key=lambda r: (r[0], r[1]))
 
+    if args.section:
+        # Keep only groups where all entries appear in the same .tex file
+        filtered = []
+        for _, group in groupby(rows, key=lambda r: r[1]):
+            group = list(group)
+            tex_files = {tex_file_of(r[2]) for r in group} - {None}
+            if len(tex_files) == 1:
+                filtered.extend(group)
+        rows = filtered
+
     # Output with blank lines between hash groups
     prev_hash = None
-    for _, hash_val, line in rows:
+    for _, hash_val, _, line in rows:
         if prev_hash is not None and hash_val != prev_hash:
             print()
         print(line)
