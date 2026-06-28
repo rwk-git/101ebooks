@@ -51,6 +51,9 @@ page-count.log: $(pdfs) index.html
 extract-all: FORCE
 - find problems -name "*.json" -print0 | xargs -0 -r -P8 -n 512 ./extract.py
 
+extract-%: FORCE
+- find problems/$* -name "*.json" -print0 | xargs -0 -r -P8 -n 512 ./extract.py
+
 clean: FORCE
 - rm -rf -- .latex.out/* pdfs/*.pdf
 
