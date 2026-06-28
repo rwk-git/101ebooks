@@ -18,7 +18,16 @@ SHELL = /bin/bash
 # https://packages.debian.org/stable/ghostscript
 # https://packages.debian.org/stable/linkchecker
 
-pdfs = $(shell ls books | grep -v header.tex | xargs -i echo pdfs/{} | sed s/.tex/.pdf/g)
+# Install dependencies for MacOS (through brew)
+# brew install --cask mactex-no-gui
+# brew install ghostscript
+# brew install make # then use gmake
+# Launch new terminal so that pdflatex in on your PATH and TEXMFHOME updated
+# git clone https://github.com/otrego/go-type1
+# go-type1/installer.sh install gnos
+# rm -rf go-type1 # Remove the cloned directory
+
+pdfs = $(shell ls books | grep -v header.tex | xargs -I {} echo pdfs/{} | sed s/.tex/.pdf/g)
 all: $(pdfs) index.html
 logs: high-problems.log wide-problems.log duplicates.log problem-count.log page-count.log
 
@@ -34,10 +43,10 @@ index.html: index.py problem-count.log
 - ./index.py
 
 problem-count.log: $(pdfs)
-- expr $$(find pdfs -name "*.pdf" | xargs -n1 -P8 pdfgrep -Poh "Problems: \K[0-9]+" | xargs -i -P8 bash -c "printf '{} + '")0 | tee $@
+- expr $$(find pdfs -name "*.pdf" | xargs -n1 -P8 pdfgrep -Poh "Problems: \K[0-9]+" | xargs -I {} -P8 bash -c "printf '{} + '")0 | tee $@
 
 page-count.log: $(pdfs) index.html
-- lynx -dump -listonly $(shell pwd)/index.html | grep file | cut -d/ -f8-9 | xargs -i bash -c 'printf "{}:\t" && pdfinfo "{}" | grep Pages | awk "{print \$$2}"' | expand -t 10,40 | tee $@
+- lynx -dump -listonly $(shell pwd)/index.html | grep file | cut -d/ -f8-9 | xargs -I {} bash -c 'printf "{}:\t" && pdfinfo "{}" | grep Pages | awk "{print \$$2}"' | expand -t 10,40 | tee $@
 
 extract-all: FORCE
 - find problems -name "*.json" -print0 | xargs -0 -r -P8 -n 512 ./extract.py
@@ -50,7 +59,7 @@ watch: FORCE
 
 # grep $book duplicates.log | cut -d/ -f4 | cut -d. -f1 | xargs -IX sed -i 's/^[^%].*{X}/%&%duplicate/g' books/$book.tex
 duplicates.log: FORCE
-- find problems -name "*.gnos" -exec md5sum {} + | sort | uniq -w32 -dD > $@
+- find problems -name "*.gnos" -exec md5sum {} + | sort | awk 'BEGIN{p=""} $$1==p{if(!d){print l}; print; d=1} $$1!=p{p=$$1; l=$$0; d=0}' > $@
 
 high-problems.log: FORCE
 - find problems -name "*.sgf" -exec grep "[abcdefghi]\]" -l {} + \
