@@ -42,6 +42,9 @@
   \setcounter{pcount}{0}%
   \def\halfgoban{}%
   \def\halfgobanphantom{}%
+  \def\fullgoban{}%
+  \def\fullgobanphantom{}%
+  \def\pfull##1##2{\stepcounter{pcount}}%
   \def\p##1##2{\stepcounter{pcount}}%
   \problems%
   \thepcount%
@@ -82,6 +85,7 @@
       \vspace{7.5pt}%
     }%
     \clearpage%
+    \newgeometry{margin=40pt, top=102pt, bottom=10pt, headsep=40pt}%
     \hspace{-18.2pt}%
   }%
   \def\halfgobanphantom{
@@ -91,6 +95,48 @@
       \vspace{7.5pt}%
     }%
     \hspace{-18.2pt}%
+  }%
+  \def\fullgoban{%
+    \def\line####1{####1\\}%
+    \def\hvspace{%
+      \hspace{18.2pt}%
+      \vspace{7.5pt}%
+    }%
+    \clearpage%
+    \newgeometry{margin=40pt, top=102pt, bottom=10pt, headsep=40pt}%
+    \hspace{-18.2pt}%
+  }%
+  \def\fullgobanphantom{%
+    \def\line####1{####1\\}%
+    \def\hvspace{%
+      \hspace{18.2pt}%
+      \vspace{7.5pt}%
+    }%
+    \hspace{-18.2pt}%
+  }%
+  \def\pfull##1##2{%
+    \stepcounter{pcount}%
+    \hvspace%
+    \begin{varwidth}{\textwidth}%
+      \center%
+      \small%
+      \def\line####1{####1\\}%
+      \let\pfullorig\gnos%
+      \def\gnos{\pfullorig%
+        \line{<(((((((((((((((((>}%
+        \line{\char91+++++++++++++++++]}%
+        \line{\char91+++++++++++++++++]}%
+        \line{\char91++*+++++*+++++*++]}%
+        \line{\char91+++++++++++++++++]}%
+        \line{\char91+++++++++++++++++]}%
+        \line{\char91+++++++++++++++++]}%
+        \line{\char91+++++++++++++++++]}%
+      }%
+      \input{problems/\jobname/##1/##2.gnos}%
+      \normalsize\thepcount%
+    \end{varwidth}%
+    \allowbreak%
+    \hfil%
   }%
   \def\p##1##2{%
     \stepcounter{pcount}%
@@ -117,6 +163,17 @@
   \newgeometry{margin=60pt, top=82pt, bottom=80pt}%
   \def\halfgoban{}%
   \def\halfgobanphantom{}%
+  \def\fullgoban{}%
+  \def\fullgobanphantom{}%
+  \def\pfull##1##2{%
+    \stepcounter{pcount}%
+    {%
+      (\href{https://www.101weiqi.com/q/##2}{\thepcount})%
+      \:\:%
+      \input{problems/\jobname/##1/##2.solution}%
+    }
+
+  }%
   \def\p##1##2{%
     \stepcounter{pcount}%
     {%
