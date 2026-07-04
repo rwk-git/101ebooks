@@ -6,6 +6,7 @@ SHELL = /bin/bash
 .SECONDEXPANSION:
 .PHONY: FORCE
 .PRECIOUS: %.gnos
+.PRECIOUS: %.solution.gnos
 
 # overview of what makes what:
 # ./download.sh:  101weiqi.com -> problems/*.json
@@ -33,6 +34,14 @@ logs: high-problems.log wide-problems.log duplicates.log duplicates_in_book.log 
 
 %.gnos: %.json
 - ./extract.py "$<"
+
+%.solution.gnos: %.json
+- ./extract.py "$<"
+
+pdfs/%-solutions.pdf: books/%.tex books/header.tex $$(shell find problems/$$(*F)/ -name "*.json" | sed -e "s/.json/.solution.gnos/")
+- mkdir .latex.out
+- pdflatex -output-directory=.latex.out -jobname=$(*F)-solutions -interaction=nonstopmode "\def\solutionbook{1}\def\problemdir{$(*F)}\input{books/$(*F)}"
+- cp .latex.out/"$(@F)" "$@"
 
 pdfs/%.pdf: books/%.tex books/header.tex $$(shell find problems/$$(*F)/ -name "*.json" | sed -e "s/.json/.gnos/")
 - mkdir .latex.out

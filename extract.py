@@ -73,7 +73,7 @@ class SGF:
     )
     return f"(;\nAB{ab}\nAW{aw}\n{moves})"
 
-  def to_gnos(self, height_cutoff: int = 11) -> str:
+  def _build_board(self) -> list[list[str]]:
     goban = [
         list("<(((((((((((((((((>"),
         list(r"[+++++++++++++++++]"),
@@ -95,7 +95,6 @@ class SGF:
         list(r"[+++++++++++++++++]"),
         list(r",))))))))))))))))).")
     ]
-
     to_coord = lambda x: (ord(x[0]) - ord("a"), ord(x[1]) - ord("a"))
     for move in self.initial_blacks:
       col, row = to_coord(move)
@@ -103,7 +102,10 @@ class SGF:
     for move in self.initial_whites:
       col, row = to_coord(move)
       goban[row][col] = "!"
+    return goban
 
+  def to_gnos(self, height_cutoff: int = 11) -> str:
+    goban = self._build_board()
     char91 = lambda c: "\\char91" if c == "[" else c
     result = "{\\gnos%\n"
     height_cutoff = 19 if self.height > height_cutoff else height_cutoff
@@ -112,8 +114,47 @@ class SGF:
       row_str = "".join(map(char91, row))
       result += "\\line{" + row_str + "}\n"
     result += "}%"
-
     return result
+
+  def to_gnos_with_solution(self, height_cutoff: int = 11) -> tuple[str, str]:
+    """Return (gnos_str, notes_str) with solution moves numbered on the board.
+
+    gnos_str: LaTeX gnos block for saving as a .solution.gnos file, using the
+    gnosb/gnosw fonts for numbered stones (no extra packages required).
+    notes_str: comma-separated "N at M" entries when a later solution move
+    lands on a position already occupied by an earlier one (empty if none).
+
+    Numbering starts at 1 for the first move (Black by convention, following
+    the to_sgf even-index-is-Black rule). Supports move numbers 1-99.
+    """
+    board: list[list[str]] = self._build_board()
+    to_coord = lambda x: (ord(x[0]) - ord("a"), ord(x[1]) - ord("a"))
+
+    move_at: dict[tuple[int, int], int] = {}
+    notes: list[str] = []
+
+    for i, move in enumerate(self.moves):
+      move_num = i + 1
+      col, row = to_coord(move)
+      pos = (col, row)
+      if pos in move_at:
+        notes.append(f"{move_num} at {move_at[pos]}")
+      else:
+        move_at[pos] = move_num
+        font = "gnosb" if i % 2 == 0 else "gnosw"
+        board[row][col] = f"{{\\{font}\\char{move_num}}}"
+
+    def render_cell(cell: str) -> str:
+      return "\\char91" if cell == "[" else cell
+
+    result = "{\\gnos%\n"
+    height_cutoff = 19 if self.height > height_cutoff else height_cutoff
+    board = board[-height_cutoff:]
+    for row in board:
+      result += "\\line{" + "".join(render_cell(c) for c in row) + "}\n"
+    result += "}%"
+
+    return result, ", ".join(notes)
 
   @staticmethod
   def from_base64(b64: str, black_first: bool) -> "SGF":
@@ -182,7 +223,7 @@ def from_goban_coordinate(move: str) -> str:
     row = chr(ord('a') + 19 - int(move[1:]))
     return f"{col}{row}"
 
-def _compute_outputs(path: str) -> tuple[str, str, str]:
+def _compute_outputs(path: str) -> tuple[str, str, str, str, str]:
   """Return (sgf, gnos, solution) strings that process_one would write for path."""
   assert(path.endswith(".json"))
   with open(path) as file:
@@ -210,15 +251,19 @@ def _compute_outputs(path: str) -> tuple[str, str, str]:
   else:
     solution_moves = " ".join(map(to_goban_coordinate, theproblem.moves))
 
+  solution_gnos, solution_notes = theproblem.to_gnos_with_solution()
+
   return (
     theproblem.to_sgf() + "\n",
     theproblem.to_gnos() + "\n",
     solution_moves + "\n",
+    solution_gnos + "\n",
+    solution_notes + "\n" if solution_notes else "",
   )
 
 
 def process_one(path: str) -> None:
-  sgf, gnos, solution = _compute_outputs(path)
+  sgf, gnos, solution, solution_gnos, solution_notes = _compute_outputs(path)
   stem = path.removesuffix(".json")
   with open(f"{stem}.sgf", "w") as file:
     file.write(sgf)
@@ -226,6 +271,14 @@ def process_one(path: str) -> None:
     file.write(gnos)
   with open(f"{stem}.solution", "w") as file:
     file.write(solution)
+  with open(f"{stem}.solution.gnos", "w") as file:
+    file.write(solution_gnos)
+  notes_path = f"{stem}.solution.notes"
+  if solution_notes:
+    with open(notes_path, "w") as file:
+      file.write(solution_notes)
+  elif os.path.exists(notes_path):
+    os.remove(notes_path)
 
 
 def update_json_from_sgf(json_path: str, sgf_path: str) -> bool:
@@ -245,7 +298,7 @@ def update_json_from_sgf(json_path: str, sgf_path: str) -> bool:
   # If the JSON already produces the correct canonical SGF, "c" and answers are
   # already semantically correct (possibly in a different orientation/format).
   try:
-    expected_sgf, _, _ = _compute_outputs(json_path)
+    expected_sgf, *_ = _compute_outputs(json_path)
     board_and_moves_unchanged = (expected_sgf == new_sgf.to_sgf() + "\n")
   except Exception:
     board_and_moves_unchanged = False
@@ -318,17 +371,18 @@ def update_from_git(commit: str | None = None) -> None:
 
 
 def check_coherence(json_path: str) -> bool:
-  """Warn if .sgf/.gnos/.solution don't match what the .json would generate.
+  """Warn if .sgf/.gnos/.solution/.solution.gnos/.solution.notes don't match.
 
-  Returns True if all three files are present and coherent.
+  Returns True if all expected files are present and coherent.
   """
-  expected_sgf, expected_gnos, expected_solution = _compute_outputs(json_path)
+  expected_sgf, expected_gnos, expected_solution, expected_solution_gnos, expected_solution_notes = _compute_outputs(json_path)
   stem = json_path.removesuffix(".json")
   ok = True
   for ext, expected in [
     (".sgf", expected_sgf),
     (".gnos", expected_gnos),
     (".solution", expected_solution),
+    (".solution.gnos", expected_solution_gnos),
   ]:
     path = stem + ext
     if not os.path.exists(path):
@@ -340,6 +394,19 @@ def check_coherence(json_path: str) -> bool:
     if actual != expected:
       print(f"MISMATCH {path}")
       ok = False
+  notes_path = stem + ".solution.notes"
+  if expected_solution_notes:
+    if not os.path.exists(notes_path):
+      print(f"MISSING  {notes_path}")
+      ok = False
+    else:
+      with open(notes_path) as f:
+        if f.read() != expected_solution_notes:
+          print(f"MISMATCH {notes_path}")
+          ok = False
+  elif os.path.exists(notes_path):
+    print(f"UNEXPECTED {notes_path}")
+    ok = False
   return ok
 
 
@@ -356,7 +423,7 @@ def check_from_git(commit: str | None = None) -> bool:
   result = subprocess.run(cmd, capture_output=True, text=True, check=True)
   stems = set()
   for p in result.stdout.splitlines():
-    for ext in (".json", ".sgf", ".gnos", ".solution"):
+    for ext in (".json", ".sgf", ".gnos", ".solution", ".solution.gnos", ".solution.notes"):
       if p.endswith(ext):
         stems.add(p.removesuffix(ext))
         break
@@ -384,12 +451,16 @@ def reconcile_one(json_path: str) -> bool:
   sgf_path = stem + ".sgf"
   gnos_path = stem + ".gnos"
   solution_path = stem + ".solution"
+  solution_gnos_path = stem + ".solution.gnos"
+  solution_notes_path = stem + ".solution.notes"
 
   update_sgf_from_solution(sgf_path, solution_path)
 
   with open(sgf_path) as f: sgf_before = f.read()
   with open(gnos_path) as f: gnos_before = f.read()
   with open(solution_path) as f: solution_before = f.read()
+  solution_gnos_before = open(solution_gnos_path).read() if os.path.exists(solution_gnos_path) else None
+  solution_notes_before = open(solution_notes_path).read() if os.path.exists(solution_notes_path) else None
 
   update_json_from_sgf(json_path, sgf_path)
   process_one(json_path)
@@ -407,6 +478,14 @@ def reconcile_one(json_path: str) -> bool:
     if f.read() != solution_before:
       print(f"WARNING: {solution_path} changed after regeneration")
       ok = False
+  with open(solution_gnos_path) as f:
+    if f.read() != solution_gnos_before:
+      print(f"WARNING: {solution_gnos_path} changed after regeneration")
+      ok = False
+  solution_notes_after = open(solution_notes_path).read() if os.path.exists(solution_notes_path) else None
+  if solution_notes_after != solution_notes_before:
+    print(f"WARNING: {solution_notes_path} changed after regeneration")
+    ok = False
   return ok
 
 

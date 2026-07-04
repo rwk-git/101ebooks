@@ -73,7 +73,11 @@
   \setcounter{pcount}{0}%
   \fancyhfoffset{-20pt}%
   \newgeometry{margin=40pt, top=102pt, bottom=80pt, headsep=40pt}%
-  \def\line##1{\truncate[]{150pt}{##1}\\}%
+  \ifdefined\solutionbook
+    \def\line##1{##1\\}%
+  \else
+    \def\line##1{\truncate[]{150pt}{##1}\\}%
+  \fi
   \def\hvspace{%
     \hspace{5pt}%
     \vspace{5pt}%
@@ -132,8 +136,9 @@
         \line{\char91+++++++++++++++++]}%
         \line{\char91+++++++++++++++++]}%
       }%
-      \input{problems/\jobname/##1/##2.gnos}%
-      \normalsize\thepcount%
+      \input{problems/\bookdir/##1/##2.\gnosext}%
+      \normalsize\plabel{##1}{##2}%
+      \gnosnotes{##1}{##2}%
     \end{varwidth}%
     \allowbreak%
     \hfil%
@@ -144,8 +149,9 @@
     \begin{varwidth}{\textwidth}%
       \center%
       \small%
-      \input{problems/\jobname/##1/##2.gnos}%
-      \normalsize\thepcount%
+      \input{problems/\bookdir/##1/##2.\gnosext}%
+      \normalsize\plabel{##1}{##2}%
+      \gnosnotes{##1}{##2}%
     \end{varwidth}%
     \allowbreak%
     \hfil%
@@ -170,7 +176,7 @@
     {%
       (\href{https://www.101weiqi.com/q/##2}{\thepcount})%
       \:\:%
-      \input{problems/\jobname/##1/##2.solution}%
+      \input{problems/\bookdir/##1/##2.solution}%
     }
 
   }%
@@ -179,7 +185,7 @@
     {%
       (\href{https://www.101weiqi.com/q/##2}{\thepcount})%
       \:\:%
-      \input{problems/\jobname/##1/##2.solution}%
+      \input{problems/\bookdir/##1/##2.solution}%
     }
 
   }%
@@ -191,8 +197,25 @@
   \clearpage%
 }
 
+\ifdefined\problemdir\def\bookdir{\problemdir}\else\def\bookdir{\jobname}\fi
+\ifdefined\solutionbook
+  \edef\entitle{\entitle\ -- Solutions}%
+  \def\gnosext{solution.gnos}%
+  \def\gnosnotes#1#2{%
+    \IfFileExists{problems/\bookdir/#1/#2.solution.notes}{%
+      \\\footnotesize\input{problems/\bookdir/#1/#2.solution.notes}%
+    }{%
+      \\\footnotesize\phantom{X}%
+    }%
+  }%
+\else
+  \def\gnosext{gnos}%
+  \def\gnosnotes#1#2{}%
+\fi
 \begin{document}
 \rendertitle%
 \renderproblems%
-\rendersolutions%
+\ifdefined\solutionbook\else
+  \rendersolutions%
+\fi
 \end{document}
