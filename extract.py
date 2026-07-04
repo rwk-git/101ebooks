@@ -51,6 +51,19 @@ class SGF:
   def sflip(self) -> "SGF":
     return self.map(lambda x: f"{x[1]}{x[0]}")
 
+  def canonical(self) -> "SGF":
+    permutations = [
+      p := self,
+      (p := p.rotate()),
+      (p := p.rotate()),
+      (p := p.rotate()),
+      (p := p.sflip()),
+      (p := p.rotate()),
+      (p := p.rotate()),
+      (p := p.rotate()),
+    ]
+    return min(permutations, key=lambda x: (x.height, x.width, sorted(x.initial_blacks)))
+
   def to_sgf(self) -> str:
     ab = "".join(f"[{m}]" for m in self.initial_blacks)
     aw = "".join(f"[{m}]" for m in self.initial_whites)
@@ -191,19 +204,7 @@ def _compute_outputs(path: str) -> tuple[str, str, str]:
   theproblem = SGF.from_base64(input_json["c"], input_json["blackfirst"])
   if input_json["xv"] % 3 != 0:
     theproblem = theproblem.sflip()
-  theproblem = evolve(theproblem, moves=best_answer_moves)
-  permutations = [
-    p := theproblem,
-    (p := p.rotate()),
-    (p := p.rotate()),
-    (p := p.rotate()),
-    (p := p.sflip()),
-    (p := p.rotate()),
-    (p := p.rotate()),
-    (p := p.rotate()),
-  ]
-  # last key component is a tie breaker
-  theproblem = min(permutations, key=lambda x: (x.height, x.width, sorted(x.initial_blacks)))
+  theproblem = evolve(theproblem, moves=best_answer_moves).canonical()
   if input_json["status"] == 1:
     solution_moves = "eliminated"
   else:
@@ -436,6 +437,35 @@ def reconcile_from_git(commit: str | None = None) -> bool:
   return all_ok
 
 
+def find_position(sgf_path: str, problems_dir: str = "problems") -> list[str]:
+  """Find all problems whose board position matches the canonical form of sgf_path.
+
+  Ignores moves; only AB/AW stones are compared.
+  """
+  with open(sgf_path) as f:
+    query = SGF.from_sgf(f.read())
+  query_canon = evolve(query, moves=[]).canonical()
+  query_key = (sorted(query_canon.initial_blacks), sorted(query_canon.initial_whites))
+
+  matches = []
+  for root, dirs, files in os.walk(problems_dir):
+    dirs.sort()
+    for fname in sorted(files):
+      if not fname.endswith(".sgf"):
+        continue
+      path = os.path.join(root, fname)
+      try:
+        with open(path) as f:
+          sgf = SGF.from_sgf(f.read())
+        canon = evolve(sgf, moves=[]).canonical()
+        key = (sorted(canon.initial_blacks), sorted(canon.initial_whites))
+        if key == query_key:
+          matches.append(path)
+      except Exception:
+        pass
+  return matches
+
+
 def main(args: list[str]) -> None:
   if args and args[0] == "--update-from-git":
     update_from_git(args[1] if len(args) > 1 else None)
@@ -457,6 +487,14 @@ def main(args: list[str]) -> None:
   elif args and args[0] == "--reconcile-from-git":
     ok = reconcile_from_git(args[1] if len(args) > 1 else None)
     sys.exit(0 if ok else 1)
+  elif args and args[0] == "--find":
+    for sgf_path in args[1:]:
+      matches = find_position(sgf_path)
+      if matches:
+        for m in matches:
+          print(m)
+      else:
+        print(f"No matches found for {sgf_path}")
   else:
     for path in args:
       process_one(path)
