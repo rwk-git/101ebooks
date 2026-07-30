@@ -13,6 +13,7 @@
 \usepackage[none]{hyphenat}
 \usepackage{hyperref}
 \usepackage{xcolor}
+\newdimen\gnosBoardWidthDim
 
 % https://tex.stackexchange.com/a/313605
 \pdfinfoomitdate=1
@@ -75,6 +76,8 @@
   \newgeometry{margin=40pt, top=102pt, bottom=80pt, headsep=40pt}%
   \ifdefined\solutionbook
     \def\line##1{##1\\}%
+    \setbox2=\hbox{{\small\gnos +++++++++++++++++++}}%
+    \gnosBoardWidthDim=\wd2%
   \else
     \def\line##1{\truncate[]{150pt}{##1}\\}%
   \fi
@@ -118,6 +121,12 @@
     }%
     \hspace{-18.2pt}%
   }%
+  \ifdefined\solutionbook
+    \let\halfgoban\relax
+    \let\halfgobanphantom\relax
+    \let\fullgoban\relax
+    \let\fullgobanphantom\relax
+  \fi
   \def\pfull##1##2{%
     \stepcounter{pcount}%
     \hvspace%
@@ -159,6 +168,7 @@
   \begin{center}%
   \hspace{-5pt}%
   \problems%
+  \ifdefined\solutionbook\hspace{\gnosBoardWidthDim}\hfil\fi%
   \end{center}%
   \clearpage%
 }
