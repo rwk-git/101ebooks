@@ -637,7 +637,7 @@ def convert_book(tex_path, book_slug, args):
         COLS_MAP = list('ABCDEFGHJKLMNOPQRST')
         solution_moves = []
         if sol_path.exists():
-            if "eliminated" in sol_path.read_text():
+            if not args.debug and "eliminated" in sol_path.read_text():
                 print(f'problem num {original_prob_num}, {chapter_id}/{problem_id}.solution was eliminated, problems continue from {prob_num}')
                 continue
             for token in sol_path.read_text().strip().split():
