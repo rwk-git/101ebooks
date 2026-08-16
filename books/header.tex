@@ -34,6 +34,10 @@
 \vbadness=10000
 
 \newcounter{pcount}%
+\newif\ifverboseproblems
+% Comment to remove verbose
+%\verboseproblemstrue  % uncomment to show section/id below counter
+\def\plabel#1#2{\makebox[0pt]{\thepcount\ifverboseproblems\ #1/#2\fi}}%
 
 \makeatletter
 \def\HUGE{\@setfontsize\Huge{35}{35}}
