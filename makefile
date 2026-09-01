@@ -7,6 +7,15 @@ SHELL = /bin/bash
 .PHONY: FORCE
 .SECONDARY:
 
+# extract.py and index.py require Python 3.10+ (match statement, "X | None"
+# annotations).
+PYTHON := python3
+PYTHON_VERSION := $(shell $(PYTHON) -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null)
+PYTHON_OK := $(shell $(PYTHON) -c 'import sys; print(int(sys.version_info >= (3, 10)))' 2>/dev/null)
+ifneq ($(PYTHON_OK),1)
+$(error $(PYTHON) is $(or $(PYTHON_VERSION),missing) but 3.10+ is required. Did you forget to run: source .venv/bin/activate)
+endif
+
 # overview of what makes what:
 # ./download.sh:  101weiqi.com -> problems/*.json
 # ./extract.py:   problems/*.json -> problems/*.gnos
