@@ -24,8 +24,8 @@ endif
 # dependencies:
 # https://github.com/otrego/go-type1
 # https://packages.debian.org/stable/texlive
-# https://packages.debian.org/stable/ghostscript
-# https://packages.debian.org/stable/linkchecker
+# https://packages.debian.org/stable/pdfgrep
+# https://packages.debian.org/stable/lynx
 
 # Install dependencies for MacOS (through brew)
 # brew install --cask mactex-no-gui
