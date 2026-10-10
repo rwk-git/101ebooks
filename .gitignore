@@ -8,3 +8,4 @@ xtch/
 *.solution.gnos
 *.solution.notes
 random
+problems/.position-index.npz

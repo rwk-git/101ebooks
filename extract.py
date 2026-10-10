@@ -545,6 +545,100 @@ def find_position(sgf_path: str, problems_dir: str = "problems") -> list[str]:
   return matches
 
 
+POSITION_INDEX = os.path.join("problems", ".position-index.npz")
+
+
+def _board_vector(sgf: SGF):
+  """19x19 board flattened to 361 cells: 0 empty, 1 black, 2 white."""
+  import numpy as np
+  board = np.zeros(361, dtype=np.int8)
+  for stones, color in [(sgf.initial_blacks, 1), (sgf.initial_whites, 2)]:
+    for m in stones:
+      board[(ord(m[1]) - ord('a')) * 19 + ord(m[0]) - ord('a')] = color
+  return board
+
+
+def _symmetries(sgf: SGF) -> list[SGF]:
+  """The 8 board symmetries of sgf (same sequence as SGF.canonical)."""
+  result = [p := sgf]
+  for step in ["rotate", "rotate", "rotate", "sflip", "rotate", "rotate", "rotate"]:
+    result.append(p := getattr(p, step)())
+  return result
+
+
+def _list_sgfs(problems_dir: str) -> list[str]:
+  paths = []
+  for root, dirs, files in os.walk(problems_dir):
+    for fname in files:
+      if fname.endswith(".sgf"):
+        paths.append(os.path.join(root, fname))
+  return sorted(paths)
+
+
+def load_position_index(problems_dir: str = "problems", index_path: str = POSITION_INDEX,
+                        rebuild: bool = False):
+  """Return (paths, boards) for all problems, boards being canonical N x 361 vectors.
+
+  The index is cached in index_path and rebuilt when an SGF was added, removed
+  or modified since it was written.
+  """
+  import numpy as np
+  sgf_paths = _list_sgfs(problems_dir)
+  if not rebuild and os.path.exists(index_path):
+    index_mtime = os.path.getmtime(index_path)
+    with np.load(index_path) as data:
+      paths, boards = data["paths"], data["boards"]
+      listed = data["listed"]
+    if (listed.tolist() == sgf_paths
+        and all(os.path.getmtime(p) <= index_mtime for p in sgf_paths)):
+      return paths, boards
+
+  print(f"Building position index {index_path}...", file=sys.stderr)
+  paths, boards = [], []
+  for path in sgf_paths:
+    try:
+      with open(path) as f:
+        sgf = SGF.from_sgf(f.read())
+      boards.append(_board_vector(evolve(sgf, moves=[]).canonical()))
+      paths.append(path)
+    except Exception:
+      pass
+  paths = np.array(paths)
+  boards = np.array(boards, dtype=np.int8).reshape(-1, 361)
+  np.savez(index_path, paths=paths, boards=boards, listed=np.array(sgf_paths))
+  return paths, boards
+
+
+def find_similar(sgf_path: str, k: int = 10, max_dist: int | None = None,
+                 swap_colors: bool = False, rebuild: bool = False) -> list[tuple[int, str, bool]]:
+  """Find the k problems whose AB/AW position is closest to the one in sgf_path.
+
+  Distance is the number of intersections whose state (empty/black/white)
+  differs, minimized over the 8 board symmetries (and over swapping colors if
+  swap_colors). Returns (distance, path, swapped) tuples, closest first.
+  """
+  import numpy as np
+  paths, boards = load_position_index(rebuild=rebuild)
+  with open(sgf_path) as f:
+    query = evolve(SGF.from_sgf(f.read()), moves=[])
+  variants = [(_board_vector(s), False) for s in _symmetries(query)]
+  if swap_colors:
+    swapped = SGF(initial_whites=query.initial_blacks, initial_blacks=query.initial_whites, moves=[])
+    variants += [(_board_vector(s), True) for s in _symmetries(swapped)]
+
+  # dists[v, i]: distance between variant v and problem i
+  dists = np.stack([(boards != v).sum(axis=1) for v, _ in variants])
+  best = dists.argmin(axis=0)
+  best_dist = dists[best, np.arange(len(paths))]
+
+  keep = paths != os.path.normpath(sgf_path)
+  if max_dist is not None:
+    keep &= best_dist <= max_dist
+  candidates = np.flatnonzero(keep)
+  candidates = candidates[np.argsort(best_dist[candidates], kind="stable")][:k]
+  return [(int(best_dist[i]), str(paths[i]), variants[best[i]][1]) for i in candidates]
+
+
 def main(args: list[str]) -> None:
   if args and args[0] == "--update-from-git":
     update_from_git(args[1] if len(args) > 1 else None)
@@ -572,6 +666,32 @@ def main(args: list[str]) -> None:
       if matches:
         for m in matches:
           print(m)
+      else:
+        print(f"No matches found for {sgf_path}")
+  elif args and args[0] == "--find-similar":
+    # --find-similar <sgf>... [-k N] [--max-dist D] [--swap-colors] [--rebuild-index]
+    k, max_dist, swap_colors, rebuild = 10, None, False, False
+    sgf_paths = []
+    rest = iter(args[1:])
+    for arg in rest:
+      if arg == "-k":
+        k = int(next(rest))
+      elif arg == "--max-dist":
+        max_dist = int(next(rest))
+      elif arg == "--swap-colors":
+        swap_colors = True
+      elif arg == "--rebuild-index":
+        rebuild = True
+      else:
+        sgf_paths.append(arg)
+    for sgf_path in sgf_paths:
+      matches = find_similar(sgf_path, k, max_dist, swap_colors, rebuild)
+      rebuild = False
+      if len(sgf_paths) > 1:
+        print(f"== {sgf_path}")
+      if matches:
+        for dist, path, swapped in matches:
+          print(f"{dist}\t{path}{' (swapped)' if swapped else ''}")
       else:
         print(f"No matches found for {sgf_path}")
   else:
