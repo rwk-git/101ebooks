@@ -177,6 +177,42 @@
   \clearpage%
 }
 
+% Solutions are paired: when two consecutive solutions each fit in half a
+% column, they share a line as two sub-columns split at the center. Others
+% get their own (possibly wrapping) paragraph.
+\newsavebox\solbox
+\newsavebox\solpendingbox
+\newif\ifsolpending
+\newdimen\solhalfwidth
+\def\solentry#1#2{%
+  (\href{https://www.101weiqi.com/q/#2}{\thepcount})%
+  \:\:%
+  \input{problems/\bookdir/#1/#2.solution}\unskip%
+}
+\def\solflush{%
+  \ifsolpending
+    \usebox\solpendingbox\par
+    \global\solpendingfalse
+  \fi
+}
+\def\solp#1#2{%
+  \stepcounter{pcount}%
+  \solhalfwidth=.5\columnwidth
+  \sbox\solbox{\solentry{#1}{#2}}%
+  \ifdim\wd\solbox<\dimexpr\solhalfwidth-0.5em\relax
+    \ifsolpending
+      \makebox[\solhalfwidth][l]{\usebox\solpendingbox}%
+      \usebox\solbox\par
+      \global\solpendingfalse
+    \else
+      \global\sbox\solpendingbox{\usebox\solbox}%
+      \global\solpendingtrue
+    \fi
+  \else
+    \solflush
+    \solentry{#1}{#2}\par
+  \fi
+}
 \def\rendersolutions{%
   \setcounter{pcount}{0}%
   \fancyhfoffset{0pt}%
@@ -185,28 +221,15 @@
   \def\halfgobanphantom{}%
   \def\fullgoban{}%
   \def\fullgobanphantom{}%
-  \def\pfull##1##2{%
-    \stepcounter{pcount}%
-    {%
-      (\href{https://www.101weiqi.com/q/##2}{\thepcount})%
-      \:\:%
-      \input{problems/\bookdir/##1/##2.solution}%
-    }
-
-  }%
-  \def\p##1##2{%
-    \stepcounter{pcount}%
-    {%
-      (\href{https://www.101weiqi.com/q/##2}{\thepcount})%
-      \:\:%
-      \input{problems/\bookdir/##1/##2.solution}%
-    }
-
-  }%
+  \let\pfull\solp
+  \let\p\solp
   \begin{multicols*}{2}%
     \setlength{\parskip}{2.7pt}%
+    \setlength{\parindent}{0pt}%
     \footnotesize%
+    \global\solpendingfalse
     \problems%
+    \solflush
   \end{multicols*}%
   \clearpage%
 }
