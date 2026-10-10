@@ -57,7 +57,7 @@ pdfs/%.pdf: books/%.tex books/header.tex $$(shell find problems/$$(*F)/ -name "*
 - cp .latex.out/"$(@F)" "$@"
 
 index.html: index.py problem-count.log
-- ./index.py
+- true #./index.py
 
 problem-count.log: $(pdfs)
 - pdfgrep -Poh --page-range=1 "Problems: \K[0-9]+" $^ | paste -sd+ | bc > "$@"
